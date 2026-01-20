@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using ServiceScan.SourceGenerator.Model;
@@ -31,13 +31,20 @@ public partial class DependencyInjectionGenerator
         {
             bool typesFound = false;
 
-            foreach (var (implementationType, matchedTypes) in FilterTypes(compilation, attribute, containingType))
+            foreach (var (implementationType, matchedTypes, attributeData) in FilterTypes(compilation, attribute, containingType))
             {
                 typesFound = true;
 
                 if (attribute.CustomHandler != null)
                 {
                     var implementationTypeName = implementationType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    
+                    // Generate attribute instantiation code if needed
+                    string? attributeInstantiation = null;
+                    if (attribute.CustomHandlerParameterMode == CustomHandlerParameterMode.WithAttribute && attributeData != null)
+                    {
+                        attributeInstantiation = GenerateAttributeInstantiation(attributeData);
+                    }
 
                     // If CustomHandler method has multiple type parameters, which are resolvable from the first one - we try to provide them.
                     // e.g. ApplyConfiguration<T, TEntity>(ModelBuilder modelBuilder) where T : IEntityTypeConfiguration<TEntity>
@@ -55,7 +62,8 @@ public partial class DependencyInjectionGenerator
                                 attribute.CustomHandlerType.Value,
                                 attribute.CustomHandler,
                                 implementationTypeName,
-                                typeArguments));
+                                typeArguments,
+                                attributeInstantiation));
                         }
                     }
                     else
@@ -64,7 +72,8 @@ public partial class DependencyInjectionGenerator
                             attribute.CustomHandlerType.Value,
                             attribute.CustomHandler,
                             implementationTypeName,
-                            [implementationTypeName]));
+                            [implementationTypeName],
+                            attributeInstantiation));
                     }
                 }
                 else
@@ -126,5 +135,45 @@ public partial class DependencyInjectionGenerator
     private static IEnumerable<INamedTypeSymbol> GetSuitableInterfaces(ITypeSymbol type)
     {
         return type.AllInterfaces.Where(x => !ExcludedInterfaces.Contains(x.ToDisplayString()));
+    }
+
+    private static string GenerateAttributeInstantiation(AttributeData attributeData)
+    {
+        var attributeClass = attributeData.AttributeClass;
+        var attributeTypeName = attributeClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        
+        // Build constructor arguments
+        var constructorArgs = string.Join(", ", attributeData.ConstructorArguments.Select(FormatTypedConstant));
+        
+        // Build named arguments
+        var namedArgs = attributeData.NamedArguments.Length > 0
+            ? " { " + string.Join(", ", attributeData.NamedArguments.Select(kvp => $"{kvp.Key} = {FormatTypedConstant(kvp.Value)}")) + " }"
+            : "";
+        
+        return $"new {attributeTypeName}({constructorArgs}){namedArgs}";
+    }
+    
+    private static string FormatTypedConstant(TypedConstant constant)
+    {
+        if (constant.IsNull)
+            return "null";
+            
+        return constant.Kind switch
+        {
+            TypedConstantKind.Primitive => constant.Type?.SpecialType switch
+            {
+                SpecialType.System_String => $"\"{constant.Value}\"",
+                SpecialType.System_Char => $"'{constant.Value}'",
+                SpecialType.System_Boolean => constant.Value?.ToString()?.ToLowerInvariant() ?? "false",
+                SpecialType.System_Single => $"{constant.Value}f",
+                SpecialType.System_Double => $"{constant.Value}d",
+                SpecialType.System_Decimal => $"{constant.Value}m",
+                _ => constant.Value?.ToString() ?? "null"
+            },
+            TypedConstantKind.Enum => $"({constant.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){constant.Value}",
+            TypedConstantKind.Type => $"typeof({((ITypeSymbol)constant.Value!).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})",
+            TypedConstantKind.Array => $"new[] {{ {string.Join(", ", constant.Values.Select(FormatTypedConstant))} }}",
+            _ => constant.Value?.ToString() ?? "null"
+        };
     }
 }

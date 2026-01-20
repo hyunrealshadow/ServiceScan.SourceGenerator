@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using ServiceScan.SourceGenerator.Extensions;
@@ -58,10 +58,42 @@ public partial class DependencyInjectionGenerator
                     if (!customHandlerMethod.IsGenericMethod)
                         return Diagnostic.Create(CustomHandlerMethodHasIncorrectSignature, attribute.Location);
 
-                    var typesMatch = Enumerable.SequenceEqual(
-                        method.Parameters.Select(p => p.Type),
-                        customHandlerMethod.Parameters.Select(p => p.Type),
-                        SymbolEqualityComparer.Default);
+                    // Check if parameters match (either exact match or with one extra attribute parameter)
+                    var methodParamTypes = method.Parameters.Select(p => p.Type).ToArray();
+                    var handlerParamTypes = customHandlerMethod.Parameters.Select(p => p.Type).ToArray();
+                    
+                    bool typesMatch = false;
+                    
+                    // Check for exact match (no attribute parameter)
+                    if (methodParamTypes.Length == handlerParamTypes.Length)
+                    {
+                        typesMatch = Enumerable.SequenceEqual(methodParamTypes, handlerParamTypes, SymbolEqualityComparer.Default);
+                    }
+                    // Check for match with attribute parameter (one extra parameter at the end)
+                    else if (attribute.AttributeFilterTypeName != null && handlerParamTypes.Length == methodParamTypes.Length + 1)
+                    {
+                        var attributeFilterType = context.SemanticModel.Compilation.GetTypeByMetadataName(attribute.AttributeFilterTypeName);
+                        
+                        if (attributeFilterType != null)
+                        {
+                            // Check that all method parameters match
+                            var paramTypesMatch = true;
+                            for (int i = 0; i < methodParamTypes.Length; i++)
+                            {
+                                if (!SymbolEqualityComparer.Default.Equals(methodParamTypes[i], handlerParamTypes[i]))
+                                {
+                                    paramTypesMatch = false;
+                                    break;
+                                }
+                            }
+                            
+                            // Check that the last parameter is the attribute type
+                            if (paramTypesMatch && SymbolEqualityComparer.Default.Equals(handlerParamTypes[^1], attributeFilterType))
+                            {
+                                typesMatch = true;
+                            }
+                        }
+                    }
 
                     if (!typesMatch)
                         return Diagnostic.Create(CustomHandlerMethodHasIncorrectSignature, attribute.Location);

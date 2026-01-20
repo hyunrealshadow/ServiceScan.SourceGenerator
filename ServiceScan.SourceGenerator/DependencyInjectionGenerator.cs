@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -117,11 +117,39 @@ public partial class DependencyInjectionGenerator : IIncrementalGenerator
             {
                 var genericArguments = string.Join(", ", h.TypeArguments);
                 var arguments = string.Join(", ", method.Parameters.Select(p => p.Name));
+                
+                // Add attribute instantiation as the last argument if present
+                if (!string.IsNullOrEmpty(h.AttributeInstantiation))
+                {
+                    if (!string.IsNullOrEmpty(arguments))
+                    {
+                        arguments = arguments + ", " + h.AttributeInstantiation;
+                    }
+                    else
+                    {
+                        arguments = h.AttributeInstantiation;
+                    }
+                }
+                
                 return $"        {h.HandlerMethodName}<{genericArguments}>({arguments});";
             }
             else
             {
                 var arguments = string.Join(", ", method.Parameters.Select(p => p.Name));
+                
+                // Add attribute instantiation as the last argument if present
+                if (!string.IsNullOrEmpty(h.AttributeInstantiation))
+                {
+                    if (!string.IsNullOrEmpty(arguments))
+                    {
+                        arguments = arguments + ", " + h.AttributeInstantiation;
+                    }
+                    else
+                    {
+                        arguments = h.AttributeInstantiation;
+                    }
+                }
+                
                 return $"        {h.TypeName}.{h.HandlerMethodName}({arguments});";
             }
         }));

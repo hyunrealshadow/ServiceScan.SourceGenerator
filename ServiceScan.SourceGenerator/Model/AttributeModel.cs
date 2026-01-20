@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using ServiceScan.SourceGenerator.Extensions;
 
@@ -6,6 +6,7 @@ namespace ServiceScan.SourceGenerator.Model;
 
 enum KeySelectorType { Method, GenericMethod, TypeMember };
 enum CustomHandlerType { Method, TypeMethod };
+enum CustomHandlerParameterMode { NoAttribute, WithAttribute };
 
 record AttributeModel(
     string? AssignableToTypeName,
@@ -25,6 +26,7 @@ record AttributeModel(
     string? CustomHandler,
     CustomHandlerType? CustomHandlerType,
     int CustomHandlerMethodTypeParametersCount,
+    CustomHandlerParameterMode? CustomHandlerParameterMode,
     bool AsImplementedInterfaces,
     bool AsSelf,
     Location Location,
@@ -68,12 +70,32 @@ record AttributeModel(
 
         CustomHandlerType? customHandlerType = null;
         var customHandlerGenericParameters = 0;
+        CustomHandlerParameterMode? customHandlerParameterMode = null;
         if (customHandler != null)
         {
             var customHandlerMethod = method.ContainingType.GetMethod(customHandler, semanticModel, position);
 
             customHandlerType = customHandlerMethod != null ? Model.CustomHandlerType.Method : Model.CustomHandlerType.TypeMethod;
             customHandlerGenericParameters = customHandlerMethod?.TypeParameters.Length ?? 0;
+            
+            // Check if the custom handler expects an attribute parameter
+            if (customHandlerMethod != null && attributeFilterType != null)
+            {
+                var expectedParamCount = method.Parameters.Length + 1; // method params + attribute
+                if (customHandlerMethod.Parameters.Length == expectedParamCount)
+                {
+                    var lastParam = customHandlerMethod.Parameters.Last();
+                    if (SymbolEqualityComparer.Default.Equals(lastParam.Type, attributeFilterType))
+                    {
+                        customHandlerParameterMode = Model.CustomHandlerParameterMode.WithAttribute;
+                    }
+                }
+            }
+            
+            if (customHandlerParameterMode == null)
+            {
+                customHandlerParameterMode = Model.CustomHandlerParameterMode.NoAttribute;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(typeNameFilter))
@@ -130,6 +152,7 @@ record AttributeModel(
             customHandler,
             customHandlerType,
             customHandlerGenericParameters,
+            customHandlerParameterMode,
             asImplementedInterfaces,
             asSelf,
             location,

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -10,7 +10,7 @@ namespace ServiceScan.SourceGenerator;
 
 public partial class DependencyInjectionGenerator
 {
-    private static IEnumerable<(INamedTypeSymbol Type, INamedTypeSymbol[]? MatchedAssignableTypes)> FilterTypes
+    private static IEnumerable<(INamedTypeSymbol Type, INamedTypeSymbol[]? MatchedAssignableTypes, AttributeData? AttributeData)> FilterTypes
         (Compilation compilation, AttributeModel attribute, INamedTypeSymbol containingType)
     {
         var semanticModel = compilation.GetSemanticModel(attribute.Location.SourceTree);
@@ -66,9 +66,11 @@ public partial class DependencyInjectionGenerator
             if (type.IsGenericType && attribute.CustomHandler != null)
                 continue;
 
+            AttributeData? matchedAttribute = null;
             if (attributeFilterType != null)
             {
-                if (!type.GetAttributes().Any(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, attributeFilterType)))
+                matchedAttribute = type.GetAttributes().FirstOrDefault(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, attributeFilterType));
+                if (matchedAttribute == null)
                     continue;
             }
 
@@ -100,7 +102,7 @@ public partial class DependencyInjectionGenerator
             if (!semanticModel.IsAccessible(position, type))
                 continue;
 
-            yield return (type, matchedTypes);
+            yield return (type, matchedTypes, matchedAttribute);
         }
     }
 

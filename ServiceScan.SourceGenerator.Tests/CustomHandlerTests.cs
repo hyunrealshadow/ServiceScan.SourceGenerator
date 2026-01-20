@@ -1,4 +1,4 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -256,6 +256,137 @@ public class CustomHandlerTests
                     HandleType<global::GeneratorTests.MyFirstService>(services, number);
                     HandleType<global::GeneratorTests.MySecondService>(services, number);
                     return services;
+                }
+            }
+            """;
+        Assert.Equal(expected, results.GeneratedTrees[1].ToString());
+    }
+
+    [Fact]
+    public void CustomHandlerWithAttributeParameter()
+    {
+        var source = $$"""
+            using ServiceScan.SourceGenerator;
+            using Microsoft.Extensions.DependencyInjection;
+            
+            namespace GeneratorTests;
+                    
+            public static partial class ServicesExtensions
+            {
+                [GenerateServiceRegistrations(AttributeFilter = typeof(ServiceAttribute), CustomHandler = nameof(HandleType))]
+                public static partial IServiceCollection ProcessServices(this IServiceCollection services);
+
+                private static void HandleType<T>(IServiceCollection services, ServiceAttribute attribute) 
+                {
+                    System.Console.WriteLine($"{typeof(T).Name}: {attribute.Name}");
+                }
+            }
+            """;
+
+        var services =
+            """
+            using System;
+
+            namespace GeneratorTests;
+            
+            [AttributeUsage(AttributeTargets.Class)]
+            public sealed class ServiceAttribute : Attribute
+            {
+                public string Name { get; set; }
+            }
+            
+            [Service(Name = "First")]
+            public class MyFirstService {}
+            
+            [Service(Name = "Second")]
+            public class MySecondService {}
+            
+            public class ServiceWithoutAttribute {}
+            """;
+
+        var compilation = CreateCompilation(source, services);
+
+        var results = CSharpGeneratorDriver
+            .Create(_generator)
+            .RunGenerators(compilation)
+            .GetRunResult();
+
+        var expected = $$"""
+            namespace GeneratorTests;
+
+            public static partial class ServicesExtensions
+            {
+                public static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection ProcessServices(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+                {
+                    HandleType<global::GeneratorTests.MyFirstService>(services, new global::GeneratorTests.ServiceAttribute() { Name = "First" });
+                    HandleType<global::GeneratorTests.MySecondService>(services, new global::GeneratorTests.ServiceAttribute() { Name = "Second" });
+                    return services;
+                }
+            }
+            """;
+        Assert.Equal(expected, results.GeneratedTrees[1].ToString());
+    }
+
+    [Fact]
+    public void CustomHandlerWithAttributeParameterWithConstructorArgs()
+    {
+        var source = $$"""
+            using ServiceScan.SourceGenerator;
+            
+            namespace GeneratorTests;
+                    
+            public static partial class ServicesExtensions
+            {
+                [GenerateServiceRegistrations(AttributeFilter = typeof(ServiceAttribute), CustomHandler = nameof(HandleType))]
+                public static partial void ProcessServices();
+
+                private static void HandleType<T>(ServiceAttribute attribute) 
+                {
+                    System.Console.WriteLine($"{typeof(T).Name}: {attribute.Priority}");
+                }
+            }
+            """;
+
+        var services =
+            """
+            using System;
+
+            namespace GeneratorTests;
+            
+            [AttributeUsage(AttributeTargets.Class)]
+            public sealed class ServiceAttribute : Attribute
+            {
+                public ServiceAttribute(int priority)
+                {
+                    Priority = priority;
+                }
+                
+                public int Priority { get; }
+            }
+            
+            [Service(10)]
+            public class HighPriorityService {}
+            
+            [Service(1)]
+            public class LowPriorityService {}
+            """;
+
+        var compilation = CreateCompilation(source, services);
+
+        var results = CSharpGeneratorDriver
+            .Create(_generator)
+            .RunGenerators(compilation)
+            .GetRunResult();
+
+        var expected = $$"""
+            namespace GeneratorTests;
+
+            public static partial class ServicesExtensions
+            {
+                public static partial void ProcessServices()
+                {
+                    HandleType<global::GeneratorTests.HighPriorityService>(new global::GeneratorTests.ServiceAttribute(10));
+                    HandleType<global::GeneratorTests.LowPriorityService>(new global::GeneratorTests.ServiceAttribute(1));
                 }
             }
             """;

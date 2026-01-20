@@ -128,6 +128,35 @@ public static partial class ServiceCollectionExtensions
 }
 ```
 
+### CustomHandler with Attribute Parameter
+When using `AttributeFilter`, you can optionally have the custom handler accept the attribute instance as a parameter. 
+The source generator will automatically instantiate the attribute and pass it to your handler:
+```csharp
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+public class OptionAttribute(string? section = null) : Attribute
+{
+    public string? Section { get; } = section;
+}
+
+[Option]
+public record RootSection { }
+
+[Option("SectionOption")]
+public record SectionOption { }
+
+public static partial class ServiceCollectionExtensions
+{
+    [GenerateServiceRegistrations(AttributeFilter = typeof(OptionAttribute), CustomHandler = nameof(AddOption))]
+    public static partial IServiceCollection AddOptions(this IServiceCollection services, IConfiguration configuration);
+
+    private static void AddOption<T>(IServiceCollection services, IConfiguration configuration, OptionAttribute attribute)
+    {
+        var sectionKey = attribute?.Section;
+        var section = sectionKey is null ? configuration : configuration.GetSection(sectionKey);
+        services.Configure<T>(section);
+    }
+}
+```
 ### Apply EF Core IEntityTypeConfiguration types
 
 ```csharp
@@ -164,4 +193,4 @@ public static partial class ModelBuilderExtensions
 | **ExcludeByTypeName** | Sets this value to exclude types from being registered by their full name. You can use '*' wildcards. You can also use ',' to separate multiple filters. |
 | **ExcludeByAttribute** | Excludes matching types by the specified attribute type being present. |
 | **KeySelector** | Sets this property to add types as keyed services. This property should point to one of the following: <br>- The name of a static method in the current type with a string return type. The method should be either generic or have a single parameter of type `Type`. <br>- A constant field or static property in the implementation type. |
-| **CustomHandler** | Sets this property to invoke a custom method for each type found instead of regular registration logic. This property should point to one of the following: <br>- Name of a generic method in the current type. <br>- Static method name in found types. <br>This property is incompatible with `Lifetime`, `AsImplementedInterfaces`, `AsSelf`, and `KeySelector` properties. <br>**Note:** When using a generic `CustomHandler` method, types are automatically filtered by the generic constraints defined on the method's type parameters (e.g., `class`, `struct`, `new()`, interface constraints). |
+| **CustomHandler** | Sets this property to invoke a custom method for each type found instead of regular registration logic. This property should point to one of the following: <br>- Name of a generic method in the current type. <br>- Static method name in found types. <br>This property is incompatible with `Lifetime`, `AsImplementedInterfaces`, `AsSelf`, and `KeySelector` properties. <br>**Note:** When using a generic `CustomHandler` method, types are automatically filtered by the generic constraints defined on the method's type parameters (e.g., `class`, `struct`, `new()`, interface constraints). <br>**Attribute Parameter:** When used with `AttributeFilter`, the custom handler can optionally accept the attribute instance as the last parameter. The generator will automatically instantiate the attribute with its constructor arguments and property values. |

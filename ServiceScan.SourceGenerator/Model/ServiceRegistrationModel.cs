@@ -1,4 +1,4 @@
-﻿namespace ServiceScan.SourceGenerator.Model;
+namespace ServiceScan.SourceGenerator.Model;
 
 record ServiceRegistrationModel(
     string Lifetime,
@@ -13,4 +13,5 @@ record CustomHandlerModel(
     CustomHandlerType CustomHandlerType,
     string HandlerMethodName,
     string TypeName,
-    EquatableArray<string> TypeArguments);
+    EquatableArray<string> TypeArguments,
+    string? AttributeInstantiation);
